@@ -46,7 +46,7 @@ pub fn new(host:&str,port:u16) -> Result<Client,Error> {
 }
 
 impl Mclient for Client {
-    pub fn get(&mut self,key:&str) -> Result<String,Error> {
+    fn get(&mut self,key:&str) -> Result<String,Error> {
         assert!(!key.contains(" "));
         assert!(!key.contains_char('\t'));
         assert!(!key.contains_char('\n'));
@@ -66,17 +66,14 @@ impl Mclient for Client {
             }
         }
 
-        self.conn.unwrap().write_str(cmd.as_slice());
+        let mut tc = self.conn.take().unwrap();
+        tc.write_str(cmd.as_slice());
         let mut ret = [0u8,..100];
-        match self.conn.unwrap().read(ret) {
+        match tc.read(ret) {
             Ok(nread) => {
                 println!("{} read",nread);
-                let mut s = String::new();
-                for &x in ret.iter() {
-                    println("{}",x);
-                    s += x.to_str_radix(16);
-                }
-                Ok(s)
+                let v : Vec<char> = ret.iter().map(|x| x.to_ascii().to_char()).collect();
+                Ok(String::from_chars(v.as_slice()))
             },
             Err(err) => {
                     Err(Error{
@@ -90,7 +87,12 @@ impl Mclient for Client {
 }
 
 #[test]
-fn test_new_client() {
-    let c = new("127.0.0.1",11211u16);
+fn test_get() {
+    let mut c = new("127.0.0.1",11211);
     assert!(c.is_ok());
+    match c {
+        Ok(mut mc) => { let ret = mc.get("foo");println!("ret {}",ret); }
+        Err(e) => { fail!("not ok"); }
+    }
 }
+
