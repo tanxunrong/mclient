@@ -1,0 +1,8 @@
+[package]
+name = "mclient"
+version = "0.0.1"
+authors = ["XunRong Tan <tanxrong@gmail.com>"]
+
+[lib]
+name = "mclient"
+path = "src/lib.rs"
