@@ -1,0 +1,7 @@
+[package]
+name = "mclient-example"
+version = "0.0.1"
+authors = ["XunRong Tan <tanxrong@gmail.com>"]
+
+[dependencies.mclient]
+path = ".."
