@@ -25,6 +25,29 @@ pub enum ErrorKind {
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
+struct Val {
+    key : String,
+    flag : u16,
+    len : u64,
+    v : Vec<u8>
+}
+
+#[deriving(PartialEq, Eq, Clone, Show)]
+enum Mcresponse {
+    Stored,
+    NotStored,
+    Deleted,
+    NotFound,
+    End,
+    Value(Val)
+}
+
+enum Mcrequest {
+    Get(&str),
+    Set()
+}
+
+#[deriving(PartialEq, Eq, Clone, Show)]
 pub struct Error {
     desc : &'static str,
     detail: Option<String>,
