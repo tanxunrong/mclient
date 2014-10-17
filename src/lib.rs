@@ -6,6 +6,7 @@ use std::io::*;
 use std::io::net::ip::SocketAddr;
 use std::from_str::FromStr;
 use std::time::Duration;
+use std::default::Default;
 
 pub trait Mclient {
     fn get(&mut self,key:&str) -> Result<String,Error> ;
@@ -19,6 +20,7 @@ pub struct Client {
 #[deriving(PartialEq, Eq, Clone, Show)]
 pub enum ErrorKind {
     InvalidHost,
+    InvalidResponse,
     InterIoErr(IoError)
 }
 
@@ -66,21 +68,34 @@ impl Mclient for Client {
             }
         }
 
-        let mut tc = self.conn.take().unwrap();
+        let mut tc = self.conn.unwrap();
         tc.write_str(cmd.as_slice());
-        let mut ret = [0u8,..100];
-        match tc.read(ret) {
+        let mut ret = [0u8,..1024];
+        match tc.read_at_least(5,ret) {
             Ok(nread) => {
-                println!("{} read",nread);
-                let v : Vec<char> = ret.iter().map(|x| x.to_ascii().to_char()).collect();
-                Ok(String::from_chars(v.as_slice()))
+                let back = ret.slice_to(nread).clone();
+                let first5 = back.slice_to(5);
+                match first5 {
+
+                    "END\r\n".as_bytes() {
+                        Ok("".into_string())
+                    },
+
+                    _ => { 
+                        Err(Error{
+                            desc : "invalid Response",
+                            detail : None,
+                            kind : InvalidResponse
+                        })
+                    }
+                }
             },
             Err(err) => {
-                    Err(Error{
-                        desc : "fail to read",
-                        detail : None,
-                        kind : InterIoErr(err)
-                    })
+                Err(Error{
+                    desc : "fail to read",
+                    detail : None,
+                    kind : InterIoErr(err)
+                })
             }
         }
     }
