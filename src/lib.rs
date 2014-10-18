@@ -7,6 +7,7 @@ use std::io::net::ip::SocketAddr;
 use std::from_str::FromStr;
 use std::time::Duration;
 use std::default::Default;
+use std::cell::RefCell;
 
 const SUFFIX = String::from_str("\r\n");
 
@@ -17,11 +18,12 @@ pub trait Mclient {
 
 pub struct Client {
     addr : SocketAddr,
-    conn : Option<TcpStream>
+    conn : RefCell<TcpStream>
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
 pub enum ErrorKind {
+    InvalidIp,
     CmdErr,
     ClientErr(String),
     ServerErr(String),
@@ -64,24 +66,20 @@ pub fn new(host:&str,port:u16) -> Result<Client,Error> {
     let ipo : Option<IpAddr> = FromStr::from_str(host);
     match ipo {
         Some(ip) => {
-            Ok(Client{addr:SocketAddr{ip:ip,port:port},conn:None})
+            Ok(Client{addr:SocketAddr{ip:ip,port:port},conn:RefCell::new(None)})
         },
         None => {
             Err(Error{
                 desc : "invalid host",
-                kind : InvalidHost,
-                detail : None
+                detail : None,
+                kind : InvalidIp
             })
         }
     }
 }
 
-impl Mclient for Client {
-    fn get(&mut self,key:&str) -> Result<String,Error> {
-        assert!(!key.contains(" "));
-        assert!(!key.contains_char('\t'));
-        assert!(!key.contains_char('\n'));
-        let cmd = String::from_str("get ") + key.into_string() + "\r\n".into_string();
+impl Client {
+    fn get_conn(&mut self) -> Result<TcpStream,Error> {
         if self.conn.is_none() {
             match TcpStream::connect_timeout(self.addr,Duration::seconds(1)) {
                 Ok(c) => {
@@ -96,8 +94,18 @@ impl Mclient for Client {
                 }
             }
         }
+    }
 
-        let mut tc = self.conn.unwrap();
+}
+
+impl Mclient for Client {
+    fn get(&mut self,key:&str) -> Result<String,Error> {
+        assert!(!key.contains(" "));
+        assert!(!key.contains_char('\t'));
+        assert!(!key.contains_char('\n'));
+        let cmd = String::from_str("get ") + key.into_string() + "\r\n".into_string();
+
+        let mut tc = try!(self.get_conn());
         tc.write_str(cmd.as_slice());
         let mut ret = [0u8,..1024];
         match tc.read_at_least(5,ret) {
@@ -131,12 +139,8 @@ impl Mclient for Client {
 }
 
 #[test]
-fn test_get() {
+fn test_new_mc() {
     let mut c = new("127.0.0.1",11211);
     assert!(c.is_ok());
-    match c {
-        Ok(mut mc) => { let ret = mc.get("foo");println!("ret {}",ret); }
-        Err(e) => { fail!("not ok"); }
-    }
 }
 
