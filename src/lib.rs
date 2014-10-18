@@ -8,8 +8,11 @@ use std::from_str::FromStr;
 use std::time::Duration;
 use std::default::Default;
 
+const SUFFIX = String::from_str("\r\n");
+
 pub trait Mclient {
     fn get(&mut self,key:&str) -> Result<String,Error> ;
+    fn set(&mut self,key:&str,val:&str) -> Result<String,Error> ;
 }
 
 pub struct Client {
@@ -19,8 +22,9 @@ pub struct Client {
 
 #[deriving(PartialEq, Eq, Clone, Show)]
 pub enum ErrorKind {
-    InvalidHost,
-    InvalidResponse,
+    CmdErr,
+    ClientErr(String),
+    ServerErr(String),
     InterIoErr(IoError)
 }
 
@@ -33,7 +37,7 @@ struct Val {
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
-enum Mcresponse {
+enum Response {
     Stored,
     NotStored,
     Deleted,
@@ -42,9 +46,11 @@ enum Mcresponse {
     Value(Val)
 }
 
-enum Mcrequest {
-    Get(&str),
-    Set()
+#[deriving(PartialEq, Eq, Clone, Show)]
+enum Request {
+    Get(String)
+    Set(String,String)
+    Del(String)
 }
 
 #[deriving(PartialEq, Eq, Clone, Show)]
