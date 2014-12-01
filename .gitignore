@@ -11,3 +11,7 @@
 Cargo.lock
 */target/
 /target/
+
+core
+*.swp
+*.swq
