@@ -10,7 +10,7 @@ use std::cell::RefCell;
 
 pub struct Client {
     addr : SocketAddr,
-    conn : RefCell<Option<TcpStream>>
+    conn : RefCell<TcpStream>
 }
 
 #[deriving(Show,Clone)]
@@ -47,31 +47,23 @@ pub type McResult<T> = Result<T,Failure>;
 impl Client {
 
     pub fn new(addr:&str) -> McResult<Client> {
-        let addr : Option<SocketAddr> = FromStr::from_str(addr);
-        match addr {
-            Some(ad) => {
-                Ok(Client{addr:ad,conn:RefCell::new(None)})
+        let ad : Option<SocketAddr> = FromStr::from_str(addr);
+        match ad {
+            Some(addr) => {
+                let conn = try!(TcpStream::connect_timeout(addr,Duration::seconds(1)));
+                Ok(Client{addr:addr,conn:RefCell::new(conn)})
             },
             None => {
                 Err(Failure::Client(ClientError{desc:"invalid addr".into_string()}))
             }
         }
     }
-/*
-    fn get_conn(&self) -> McResult<Client> {
-        let mut tc = self.conn.borrow_mut();
-        if tc.is_none() {
-            let t = try!(TcpStream::connect_timeout(self.addr,Duration::seconds(1)));
-            *tc = Some(t);
-        }
-        Ok(*self)
-    }
-*/
+
 }
 
 #[test]
 fn test_new_mc() {
-    let mut c = Client::new("127.0.0.1:11211");
+    let c = Client::new("127.0.0.1:11211");
     assert!(c.is_ok());
 }
 
