@@ -1,146 +1,77 @@
-
-#![crate_name="mclient"]
-
 #![feature(globs)]
+
 use std::io::*;
 use std::io::net::ip::SocketAddr;
-use std::from_str::FromStr;
+use std::str::FromStr;
+use std::error::*;
 use std::time::Duration;
 use std::default::Default;
 use std::cell::RefCell;
 
-const SUFFIX = String::from_str("\r\n");
-
-pub trait Mclient {
-    fn get(&mut self,key:&str) -> Result<String,Error> ;
-    fn set(&mut self,key:&str,val:&str) -> Result<String,Error> ;
-}
-
 pub struct Client {
     addr : SocketAddr,
-    conn : RefCell<TcpStream>
+    conn : RefCell<Option<TcpStream>>
 }
 
-#[deriving(PartialEq, Eq, Clone, Show)]
-pub enum ErrorKind {
-    InvalidIp,
-    CmdErr,
-    ClientErr(String),
-    ServerErr(String),
-    InterIoErr(IoError)
+#[deriving(Show,Clone)]
+pub enum Failure {
+    Io(IoError),
+    Client(ClientError)
 }
 
-#[deriving(PartialEq, Eq, Clone, Show)]
-struct Val {
-    key : String,
-    flag : u16,
-    len : u64,
-    v : Vec<u8>
-}
-
-#[deriving(PartialEq, Eq, Clone, Show)]
-enum Response {
-    Stored,
-    NotStored,
-    Deleted,
-    NotFound,
-    End,
-    Value(Val)
-}
-
-#[deriving(PartialEq, Eq, Clone, Show)]
-enum Request {
-    Get(String)
-    Set(String,String)
-    Del(String)
-}
-
-#[deriving(PartialEq, Eq, Clone, Show)]
-pub struct Error {
-    desc : &'static str,
-    detail: Option<String>,
-    kind : ErrorKind
-}
-
-pub fn new(host:&str,port:u16) -> Result<Client,Error> {
-    let ipo : Option<IpAddr> = FromStr::from_str(host);
-    match ipo {
-        Some(ip) => {
-            Ok(Client{addr:SocketAddr{ip:ip,port:port},conn:RefCell::new(None)})
-        },
-        None => {
-            Err(Error{
-                desc : "invalid host",
-                detail : None,
-                kind : InvalidIp
-            })
-        }
+impl FromError<IoError> for Failure {
+    fn from_error(err:IoError) -> Failure {
+        Failure::Io(err)
     }
 }
+
+#[deriving(Show,Clone)]
+pub struct ClientError {
+    desc : String
+}
+
+impl Error for ClientError {
+    fn description(&self) -> &str {
+        self.desc.as_slice()
+    }
+}
+
+impl FromError<ClientError> for Failure {
+    fn from_error(err:ClientError) -> Failure {
+        Failure::Client(err)
+    }
+}
+
+pub type McResult<T> = Result<T,Failure>;
 
 impl Client {
-    fn get_conn(&mut self) -> Result<TcpStream,Error> {
-        if self.conn.is_none() {
-            match TcpStream::connect_timeout(self.addr,Duration::seconds(1)) {
-                Ok(c) => {
-                    self.conn = Some(c);
-                },
-                Err(e) => {
-                    return Err(Error{
-                        desc : "fail to conn",
-                        detail : None,
-                        kind : InterIoErr(e)
-                    })
-                }
-            }
-        }
-    }
 
-}
-
-impl Mclient for Client {
-    fn get(&mut self,key:&str) -> Result<String,Error> {
-        assert!(!key.contains(" "));
-        assert!(!key.contains_char('\t'));
-        assert!(!key.contains_char('\n'));
-        let cmd = String::from_str("get ") + key.into_string() + "\r\n".into_string();
-
-        let mut tc = try!(self.get_conn());
-        tc.write_str(cmd.as_slice());
-        let mut ret = [0u8,..1024];
-        match tc.read_at_least(5,ret) {
-            Ok(nread) => {
-                let back = ret.slice_to(nread).clone();
-                let first5 = back.slice_to(5);
-                match first5 {
-
-                    "END\r\n".as_bytes() {
-                        Ok("".into_string())
-                    },
-
-                    _ => { 
-                        Err(Error{
-                            desc : "invalid Response",
-                            detail : None,
-                            kind : InvalidResponse
-                        })
-                    }
-                }
+    pub fn new(addr:&str) -> McResult<Client> {
+        let addr : Option<SocketAddr> = FromStr::from_str(addr);
+        match addr {
+            Some(ad) => {
+                Ok(Client{addr:ad,conn:RefCell::new(None)})
             },
-            Err(err) => {
-                Err(Error{
-                    desc : "fail to read",
-                    detail : None,
-                    kind : InterIoErr(err)
-                })
+            None => {
+                Err(Failure::Client(ClientError{desc:"invalid addr".into_string()}))
             }
         }
     }
+/*
+    fn get_conn(&self) -> McResult<Client> {
+        let mut tc = self.conn.borrow_mut();
+        if tc.is_none() {
+            let t = try!(TcpStream::connect_timeout(self.addr,Duration::seconds(1)));
+            *tc = Some(t);
+        }
+        Ok(*self)
+    }
+*/
 }
 
 #[test]
 fn test_new_mc() {
-    let mut c = new("127.0.0.1",11211);
+    let mut c = Client::new("127.0.0.1:11211");
     assert!(c.is_ok());
 }
 
