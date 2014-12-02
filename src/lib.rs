@@ -9,7 +9,7 @@ use std::cell::RefCell;
 
 pub struct Client {
     addr : SocketAddr,
-    conn : RefCell<TcpStream>
+    conn : TcpStream
 }
 
 #[deriving(Show,Clone)]
@@ -56,8 +56,8 @@ pub struct Parser<T> {
     reader : T
 }
 
-impl <T> Parser<T> where T:Reader {
-    
+impl <'a,T:Reader> Parser<T> {
+
     pub fn new(reader: T) -> Parser<T> {
         Parser { reader: reader }
     }
@@ -111,7 +111,7 @@ impl <T> Parser<T> where T:Reader {
         let ret = self.read_string_line().unwrap();
         let line = ret.as_slice();
         if line.len() < 5 {
-                return Err(FromError::from_error(ClientError{desc:"Expect more,Invalid byte in response".into_string()}));
+            return Err(FromError::from_error(ClientError{desc:"Expect more,Invalid byte in response".into_string()}));
         }
         if line.starts_with("STORED") {
             Ok(Response::Stored)
@@ -131,7 +131,7 @@ impl <T> Parser<T> where T:Reader {
             Ok(Response::ServerErr(err))
         }
         else {
-             Err(FromError::from_error(ClientError{desc:"invalid response".into_string()}))
+            Err(FromError::from_error(ClientError{desc:"invalid response".into_string()}))
         }
 
     }
@@ -144,8 +144,9 @@ impl Client {
         let ad : Option<SocketAddr> = FromStr::from_str(addr);
         match ad {
             Some(addr) => {
-                let conn = try!(TcpStream::connect_timeout(addr,Duration::seconds(1)));
-                Ok(Client{addr:addr,conn:RefCell::new(conn)})
+                Ok(Client{addr:addr,
+                    conn:try!(TcpStream::connect_timeout(addr,Duration::seconds(1)))
+                    })
             },
             None => {
                 Err(FromError::from_error(ClientError{desc:"invalid addr".into_string()}))
@@ -156,13 +157,15 @@ impl Client {
     pub fn set(&mut self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
         let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
 
-        let mut conn = self.conn.borrow_mut();
-        conn.set_timeout(Some(1000u64));
+        {
+            let mut conn = &mut self.conn;
+            conn.set_timeout(Some(1000u64));
+            try!(conn.write(cmd.as_slice().as_bytes()));
+        }
 
-        try!(conn.write(cmd.as_slice().as_bytes()));
-        let mut parser = Parser::new(&mut conn as &mut Reader);
+        let mut parser = Parser::new( &mut self.conn as &mut Reader );
         let res = try!(parser.parse_value());
         Ok(res)
-   }
+    }
 }
 
