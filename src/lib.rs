@@ -43,13 +43,22 @@ impl FromError<ClientError> for Failure {
 
 pub type McResult<T> = Result<T,Failure>;
 
+
+#[deriving(Show)]
+pub struct Item {
+    key:String,
+    flag:u16,
+    Val:String
+}
+
 #[deriving(Show)]
 pub enum Response {
     Stored,
     NotStored,
     InvalidCmd,
     ClientErr(String),
-    ServerErr(String)
+    ServerErr(String),
+    Value(Item)
 }
 
 pub struct Parser<T> {
@@ -156,16 +165,27 @@ impl Client {
 
     pub fn set(&mut self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
         let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
-
         {
             let mut conn = &mut self.conn;
-            conn.set_timeout(Some(1000u64));
             try!(conn.write(cmd.as_slice().as_bytes()));
         }
+        self.parse()
+    }
 
+    pub fn get(&mut self,key:&str) -> McResult<Response> {
+        let cmd = format_args!(std::fmt::format,"get {}\r\n",key);
+        {
+            let mut conn = &mut self.conn;
+            try!(conn.write(cmd.as_slice().as_bytes()));
+        }
+        self.parse()
+    }
+
+    fn parse(&mut self) -> McResult<Response> {
         let mut parser = Parser::new( &mut self.conn as &mut Reader );
         let res = try!(parser.parse_value());
         Ok(res)
     }
+
 }
 
