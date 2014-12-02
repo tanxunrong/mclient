@@ -1,11 +1,10 @@
 #![feature(globs)]
 
 use std::io::*;
+use std::error::*;
 use std::io::net::ip::SocketAddr;
 use std::str::FromStr;
-use std::error::*;
 use std::time::Duration;
-use std::default::Default;
 use std::cell::RefCell;
 
 pub struct Client {
@@ -70,9 +69,15 @@ impl Client {
 
     pub fn set(&self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
         let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
-        println!("cmd {}",cmd);
-        try!(self.conn.borrow_mut().write(cmd.as_slice().as_bytes()));
-        let ret = try!(self.conn.borrow_mut().read_to_end()).into_ascii().into_string();
+        println!("{}",cmd);
+
+        let mut conn = self.conn.borrow_mut();
+        conn.set_timeout(Some(5000u64));
+
+        try!(conn.write(cmd.as_slice().as_bytes()));
+
+        let ret = try!(conn.read_to_string());
+
         if ret.starts_with("STORED\r\n") { return Ok(Response::Stored); }
         else if ret.starts_with("NOT_STORED\r\n") { return Ok(Response::NotStored); }
         else if ret.starts_with("ERROR\r\n" ) { return Ok(Response::InvalidCmd); }
@@ -83,16 +88,5 @@ impl Client {
         else { return Ok(Response::InvalidCmd); }
     }
 
-}
-
-#[test]
-fn test_new_mc() {
-    let c = Client::new("127.0.0.1:11211");
-    assert!(c.is_ok());
-    let res = c.unwrap().set("go",0u16,0u,"for");
-    match res {
-        Ok(r) => { println!("res {}",r); },
-        Err(e) => { panic!(e); }
-    }
 }
 

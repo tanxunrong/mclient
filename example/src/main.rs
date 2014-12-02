@@ -1,16 +1,10 @@
 extern crate mclient;
-use mclient::{Client,Mclient};
+use mclient::{Client};
 
 fn main() {
-    let c = mclient::new("127.0.0.1",11211);
-    match c {
-        Ok(mut mc) => {
-            let ret = mc.get("key");
-            match ret {
-                Ok(val) => { println!("val : {}",val); }
-                Err(e) => { fail!("{}",e); }
-            }
-        }
-        Err(e) => {  fail!("{}",e); }
+    let c = Client::new("127.0.0.1:11211").unwrap();
+    match c.set("go",0u16,0u,"for") {
+        Ok(ret) => { println!("ret {}",ret); }
+        Err(e) => { panic!(e); }
     }
 }
