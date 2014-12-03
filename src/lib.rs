@@ -15,7 +15,8 @@ pub struct Client {
 #[deriving(Show,Clone)]
 pub enum Failure {
     Io(IoError),
-    Client(ClientError)
+    Client(String),
+    Server(String)
 }
 
 impl FromError<IoError> for Failure {
@@ -24,20 +25,13 @@ impl FromError<IoError> for Failure {
     }
 }
 
-#[deriving(Show,Clone)]
-pub struct ClientError {
-    desc : String
-}
-
-impl Error for ClientError {
+impl Error for Failure {
     fn description(&self) -> &str {
-        self.desc.as_slice()
-    }
-}
-
-impl FromError<ClientError> for Failure {
-    fn from_error(err:ClientError) -> Failure {
-        Failure::Client(err)
+        match *self {
+            Failure::Io(ref e) => { e.description() },
+            Failure::Client(ref s) => { s.as_slice() } // let err = format_args!(std::fmt::format,"Client Error : {}",s); err.as_slice() },
+            Failure::Server(ref s) => { s.as_slice() } //let err = format_args!(std::fmt::format,"Server Error : {}",s); err.as_slice() }
+        }
     }
 }
 
@@ -48,7 +42,7 @@ pub type McResult<T> = Result<T,Failure>;
 pub struct Item {
     key:String,
     flag:u16,
-    Val:String
+    val:String
 }
 
 #[deriving(Show)]
@@ -76,7 +70,7 @@ impl <'a,T:Reader> Parser<T> {
         if try!(self.reader.read_byte()) as char == refchar {
             Ok(())
         } else {
-            Err(FromError::from_error(ClientError{desc:"Invalid byte in response".into_string()}))
+            Err(Failure::Server("Invalid byte in response".into_string()))
         }
     }
 
@@ -85,7 +79,7 @@ impl <'a,T:Reader> Parser<T> {
         match try!(self.reader.read_byte()) as char {
             '\n' => Ok(()),
             '\r' => self.expect_char('\n'),
-            _ => Err(FromError::from_error(ClientError{desc:"Expect new line,Invalid byte in response".into_string()}))
+            _ => Err(Failure::Server("Expect new line,Invalid byte in response".into_string()))
         }
     }
 
@@ -110,7 +104,7 @@ impl <'a,T:Reader> Parser<T> {
     fn read_string_line(&mut self) -> McResult<String> {
         match String::from_utf8(try!(self.read_line())) {
             Err(_) => {
-                Err(FromError::from_error(ClientError{desc:"Expect string,Invalid byte in response".into_string()}))
+                Err(Failure::Server("Expect string,Invalid byte in response".into_string()))
             }
             Ok(value) => Ok(value)
         }
@@ -120,7 +114,7 @@ impl <'a,T:Reader> Parser<T> {
         let ret = self.read_string_line().unwrap();
         let line = ret.as_slice();
         if line.len() < 5 {
-            return Err(FromError::from_error(ClientError{desc:"Expect more,Invalid byte in response".into_string()}));
+            return Err(Failure::Server("Expect more,Invalid byte in response".into_string()));
         }
         if line.starts_with("STORED") {
             Ok(Response::Stored)
@@ -133,14 +127,23 @@ impl <'a,T:Reader> Parser<T> {
         }
         else if line.starts_with("CLIENT_ERROR") {
             let err = line.slice(12,line.len()-4).into_string();
-            Ok(Response::ClientErr(err))
+            Err(Failure::Client(err))
         }
         else if line.starts_with("SERVER_ERROR") {
             let err = line.slice(12,line.len()-4).into_string();
-            Ok(Response::ServerErr(err))
+            Err(Failure::Client(err))
+        }
+        else if line.starts_with("VALUE") {
+            let next = self.read_string_line().unwrap();
+            let mut mess : Vec<String> = vec![];
+            for s in line.split_str(" ") {
+                mess.push(String::from_str(s))
+            }
+            let v = Item { key : mess[0].clone(),flag: FromStr::from_str(mess[1].as_slice()).unwrap_or(0u16),val:next };
+            Ok(Response::Value(v))
         }
         else {
-            Err(FromError::from_error(ClientError{desc:"invalid response".into_string()}))
+            Err(Failure::Client("invalid response".into_string()))
         }
 
     }
@@ -158,27 +161,27 @@ impl Client {
                     })
             },
             None => {
-                Err(FromError::from_error(ClientError{desc:"invalid addr".into_string()}))
+                Err(Failure::Client("invalid addr".into_string()))
             }
         }
     }
 
     pub fn set(&mut self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
         let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
-        {
-            let mut conn = &mut self.conn;
-            try!(conn.write(cmd.as_slice().as_bytes()));
-        }
+        try!(self.send(cmd.as_slice().as_bytes()));
         self.parse()
     }
 
     pub fn get(&mut self,key:&str) -> McResult<Response> {
         let cmd = format_args!(std::fmt::format,"get {}\r\n",key);
-        {
-            let mut conn = &mut self.conn;
-            try!(conn.write(cmd.as_slice().as_bytes()));
-        }
+        try!(self.send(cmd.as_slice().as_bytes()));
         self.parse()
+    }
+
+    fn send(&mut self,bytes:&[u8]) -> McResult<()> {
+            let mut conn = &mut self.conn;
+            let w = try!(conn.write(bytes));
+            Ok(w)
     }
 
     fn parse(&mut self) -> McResult<Response> {

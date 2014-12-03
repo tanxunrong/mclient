@@ -7,4 +7,9 @@ fn main() {
         Ok(ret) => { println!("ret {}",ret); }
         Err(e) => { panic!(e); }
     }
+    match c.get("go") {
+        Ok(ret) => { println!("ret {}",ret); }
+        Err(e) => { panic!(e); }
+    }
+        
 }
