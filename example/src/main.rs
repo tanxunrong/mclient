@@ -11,5 +11,10 @@ fn main() {
         Ok(ret) => { println!("ret {}",ret); }
         Err(e) => { panic!(e); }
     }
+    match c.del("go") {
+        Ok(ret) => { println!("ret {}",ret); }
+        Err(e) => { panic!(e); }
+    }
+    
         
 }

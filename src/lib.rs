@@ -50,6 +50,8 @@ pub enum Response {
     Stored,
     NotStored,
     InvalidCmd,
+    Deleted,
+    NotFound,
     ClientErr(String),
     ServerErr(String),
     Value(Item)
@@ -125,16 +127,26 @@ impl <'a,T:Reader> Parser<T> {
         else if line.starts_with("ERROR") {
             Ok(Response::InvalidCmd)
         }
+        else if line.starts_with("NOT_FOUND") {
+            Ok(Response::NotFound)
+        }
+        else if line.starts_with("DELETED") {
+            Ok(Response::Deleted)
+        }
         else if line.starts_with("CLIENT_ERROR") {
             let err = line.slice(12,line.len()-4).into_string();
             Err(Failure::Client(err))
         }
         else if line.starts_with("SERVER_ERROR") {
             let err = line.slice(12,line.len()-4).into_string();
-            Err(Failure::Client(err))
+            Err(Failure::Server(err))
         }
         else if line.starts_with("VALUE") {
             let next = self.read_string_line().unwrap();
+            let end = self.read_string_line().unwrap();
+            if end.as_slice() != "END" {
+                return Err(Failure::Server("expect END".into_string()));
+            }
             let mut mess : Vec<String> = vec![];
             for s in line.split_str(" ") {
                 mess.push(String::from_str(s))
@@ -143,7 +155,7 @@ impl <'a,T:Reader> Parser<T> {
             Ok(Response::Value(v))
         }
         else {
-            Err(Failure::Client("invalid response".into_string()))
+            Err(Failure::Server("invalid response".into_string()))
         }
 
     }
@@ -178,10 +190,16 @@ impl Client {
         self.parse()
     }
 
+    pub fn del(&mut self,key:&str) -> McResult<Response> {
+        let cmd = format_args!(std::fmt::format,"delete {} 0\r\n",key);
+        try!(self.send(cmd.as_slice().as_bytes()));
+        self.parse()
+    }
+
     fn send(&mut self,bytes:&[u8]) -> McResult<()> {
-            let mut conn = &mut self.conn;
-            let w = try!(conn.write(bytes));
-            Ok(w)
+        let mut conn = &mut self.conn;
+        let w = try!(conn.write(bytes));
+        Ok(w)
     }
 
     fn parse(&mut self) -> McResult<Response> {
