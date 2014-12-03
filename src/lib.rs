@@ -37,12 +37,15 @@ impl Error for Failure {
 
 pub type McResult<T> = Result<T,Failure>;
 
-
 #[deriving(Show)]
 pub struct Item {
     key:String,
     flag:u16,
-    val:String
+    val:Vec<u8>
+}
+
+pub trait FromMcItem {
+    fn from_item(item:&Item) -> McResult<Self>;
 }
 
 #[deriving(Show)]
@@ -52,18 +55,16 @@ pub enum Response {
     InvalidCmd,
     Deleted,
     NotFound,
-    ClientErr(String),
-    ServerErr(String),
     Value(Item)
 }
 
-pub struct Parser<T> {
+struct Parser<T> {
     reader : T
 }
 
 impl <'a,T:Reader> Parser<T> {
 
-    pub fn new(reader: T) -> Parser<T> {
+    fn new(reader: T) -> Parser<T> {
         Parser { reader: reader }
     }
 
@@ -85,7 +86,7 @@ impl <'a,T:Reader> Parser<T> {
         }
     }
 
-    fn read_line(&mut self) -> McResult<Vec<u8>> {
+    fn read_line(&mut self,len:Option<uint>) -> McResult<Vec<u8>> {
         let mut rv = vec![];
 
         loop {
@@ -96,7 +97,15 @@ impl <'a,T:Reader> Parser<T> {
                     try!(self.expect_char('\n'));
                     break;
                 },
-                _ => { rv.push(b) }
+                _ => { 
+                    rv.push(b); 
+                    match len {
+                        Some(l) => { 
+                            if rv.len() > l { return Err(Failure::Server("Expect no more".into_string())); }
+                        },
+                        None => {},
+                    }
+                }
             };
         }
 
@@ -104,7 +113,7 @@ impl <'a,T:Reader> Parser<T> {
     }
 
     fn read_string_line(&mut self) -> McResult<String> {
-        match String::from_utf8(try!(self.read_line())) {
+        match String::from_utf8(try!(self.read_line(None))) {
             Err(_) => {
                 Err(Failure::Server("Expect string,Invalid byte in response".into_string()))
             }
@@ -112,7 +121,7 @@ impl <'a,T:Reader> Parser<T> {
         }
     }
 
-    pub fn parse_value(&mut self) -> McResult<Response> {
+    fn parse_value(&mut self) -> McResult<Response> {
         let ret = self.read_string_line().unwrap();
         let line = ret.as_slice();
         if line.len() < 5 {
@@ -142,16 +151,22 @@ impl <'a,T:Reader> Parser<T> {
             Err(Failure::Server(err))
         }
         else if line.starts_with("VALUE") {
-            let next = self.read_string_line().unwrap();
-            let end = self.read_string_line().unwrap();
-            if end.as_slice() != "END" {
-                return Err(Failure::Server("expect END".into_string()));
-            }
             let mut mess : Vec<String> = vec![];
             for s in line.split_str(" ") {
                 mess.push(String::from_str(s))
             }
-            let v = Item { key : mess[0].clone(),flag: FromStr::from_str(mess[1].as_slice()).unwrap_or(0u16),val:next };
+            if mess.len() != 4 {
+                return Err(Failure::Server("invalid Value response".into_string()));
+            }
+
+            let datalen:Option<uint> = FromStr::from_str(mess[3].as_slice());
+            let next = self.read_line(datalen).unwrap();
+
+            let end = self.read_string_line().unwrap();
+            if end.as_slice() != "END" {
+                return Err(Failure::Server("expect END".into_string()));
+            }
+            let v = Item { key : mess[1].clone(),flag: FromStr::from_str(mess[2].as_slice()).unwrap(),val:next };
             Ok(Response::Value(v))
         }
         else {
