@@ -194,18 +194,27 @@ impl Client {
     }
 
     pub fn set(&mut self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
+        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
+            return Err(Failure::Client("invalid key".into_string()));
+        }
         let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
         try!(self.send(cmd.as_slice().as_bytes()));
         self.parse()
     }
 
     pub fn get(&mut self,key:&str) -> McResult<Response> {
+        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
+            return Err(Failure::Client("invalid key".into_string()));
+        }
         let cmd = format_args!(std::fmt::format,"get {}\r\n",key);
         try!(self.send(cmd.as_slice().as_bytes()));
         self.parse()
     }
 
     pub fn del(&mut self,key:&str) -> McResult<Response> {
+        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
+            return Err(Failure::Client("invalid key".into_string()));
+        }
         let cmd = format_args!(std::fmt::format,"delete {} 0\r\n",key);
         try!(self.send(cmd.as_slice().as_bytes()));
         self.parse()
