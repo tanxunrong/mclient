@@ -1,7 +1,5 @@
 #![feature(globs)]
 
-extern crate libc;
-
 use std::io::*;
 use std::error::*;
 use std::io::net::ip::SocketAddr;
@@ -198,30 +196,25 @@ impl Client {
         }
     }
 
-    pub fn set(&mut self,key:&str,flag:u16,expire:uint,data:&str) -> McResult<Response> {
-        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
-            return Err(Failure::Client("invalid key".into_string()));
-        }
-        let cmd = format_args!(std::fmt::format,"set {} {} {} {}\r\n{}\r\n",key,flag,expire,data.as_slice().as_bytes().len(),data);
-        try!(self.send(cmd.as_slice().as_bytes()));
+    pub fn set(&mut self,key:&str,flag:u32,expire:u32,data:&str) -> McResult<Response> {
+        let set_req = proto::set_req(key.as_bytes(),data.as_bytes(),flag,expire,0);
+        try!(self.send(set_req.as_bytes()));
+        try!(self.send(key.as_bytes()));
+        try!(self.send(data.as_bytes()));
         self.parse()
     }
 
     pub fn get(&mut self,key:&str) -> McResult<Response> {
-        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
-            return Err(Failure::Client("invalid key".into_string()));
-        }
-        let cmd = format_args!(std::fmt::format,"get {}\r\n",key);
-        try!(self.send(cmd.as_slice().as_bytes()));
+        let get_header = proto::get_req(key.as_bytes(),0);
+        try!(self.send(get_header.as_bytes()));
+        try!(self.send(key.as_bytes()));
         self.parse()
     }
 
     pub fn del(&mut self,key:&str) -> McResult<Response> {
-        if key.contains_char(' ') || key.contains_char('\n') || key.contains_char('\r') {
-            return Err(Failure::Client("invalid key".into_string()));
-        }
-        let cmd = format_args!(std::fmt::format,"delete {} 0\r\n",key);
-        try!(self.send(cmd.as_slice().as_bytes()));
+        let del_header = proto::del_req(key.as_bytes());
+        try!(self.send(del_header.as_bytes()));
+        try!(self.send(key.as_bytes()));
         self.parse()
     }
 
