@@ -1,11 +1,16 @@
 #![feature(globs)]
 
+extern crate libc;
+
 use std::io::*;
 use std::error::*;
 use std::io::net::ip::SocketAddr;
 use std::str::FromStr;
 use std::time::Duration;
 use std::cell::RefCell;
+use proto::protocol_binary_request_header as Reqhead;
+use proto::protocol_binary_response_header as Reshead;
+mod proto;
 
 pub struct Client {
     addr : SocketAddr,
@@ -222,14 +227,12 @@ impl Client {
 
     fn send(&mut self,bytes:&[u8]) -> McResult<()> {
         let mut conn = &mut self.conn;
-        let w = try!(conn.write(bytes));
-        Ok(w)
+        Ok(try!(conn.write(bytes)))
     }
 
     fn parse(&mut self) -> McResult<Response> {
         let mut parser = Parser::new( &mut self.conn as &mut Reader );
-        let res = try!(parser.parse_value());
-        Ok(res)
+        Ok(try!(parser.parse_value()))
     }
 
 }
